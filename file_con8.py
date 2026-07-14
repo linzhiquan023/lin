@@ -383,7 +383,7 @@ def balanced_sampling(
         return pd.DataFrame()
 
 
-def generate_final_format(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
+def generate_final_format(df: pd.DataFrame, config: Dict, start_number: int = 1) -> pd.DataFrame:
     """生成最终输出的6个字段格式"""
     if df.empty:
         return pd.DataFrame()
@@ -396,8 +396,8 @@ def generate_final_format(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
     
     df = df.reset_index(drop=True)
     
-    # 生成排序编号（从1开始）
-    df['排序'] = np.arange(1, len(df) + 1)
+    # 生成排序编号（从 start_number 开始）
+    df['排序'] = np.arange(start_number, start_number + len(df))
     df['排序'] = df['排序'].astype(str)
     df['文件名核心'] = user_defined_filename_core_part + df['排序']
     
@@ -430,7 +430,8 @@ def generate_final_format(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
 
 def generate_filtered_sheets(
     source_df: pd.DataFrame,
-    config: Dict
+    config: Dict,
+    start_number: int = 1
 ) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame], str]:
     """
     生成三个表：
@@ -536,15 +537,15 @@ def generate_filtered_sheets(
     # ===== 后续流程只针对 true_non_empty_df =====
     # ============================================================
     
-    if empty_count >= non_empty_count:
-        # 直接保留的数据已足够多，无需平衡，直接合并输出
-        combined = pd.concat([direct_keep_df, true_non_empty_df], ignore_index=True)
-        filtered_df = generate_final_format(combined, config)
-        # 排序去除风险数据表：包含所有数据（无数据被删除）
-        risk_removed_df = generate_final_format(combined, config) if not combined.empty else None
-        status = f"空场景总数({empty_count}) >= 真正非空数据({non_empty_count})，无需平衡，总计 {len(filtered_df)} 条"
-        print(f"  {status}")
-        return risk_removed_df, None, filtered_df, status
+if empty_count >= non_empty_count:
+    # 直接保留的数据已足够多，无需平衡，直接合并输出
+    combined = pd.concat([direct_keep_df, true_non_empty_df], ignore_index=True)
+    filtered_df = generate_final_format(combined, config, start_number)
+    # 排序去除风险数据表：包含所有数据（无数据被删除）
+    risk_removed_df = generate_final_format(combined, config, start_number) if not combined.empty else None
+    status = f"空场景总数({empty_count}) >= 真正非空数据({non_empty_count})，无需平衡，总计 {len(filtered_df)} 条"
+    print(f"  {status}")
+    return risk_removed_df, None, filtered_df, status
     
     # 强制保留数据（仅针对真正的非空场景）
     force_keep_indices = set()
@@ -637,7 +638,7 @@ def generate_filtered_sheets(
     if non_empty_count_after <= empty_count:
         # 真正非空数据已少于或等于空场景总数，合并所有数据生成最终表
         combined = pd.concat([direct_keep_df, non_empty_after_clean], ignore_index=True)
-        filtered_df = generate_final_format(combined, config)
+        filtered_df = generate_final_format(combined, config, start_number)
         status = f"模板清理后真正非空数据({non_empty_count_after}) <= 空场景总数({empty_count})，合并后总计 {len(filtered_df)} 条"
         print(f"  {status}")
         return risk_removed_df, risk_data_df, filtered_df, status
@@ -673,7 +674,7 @@ def generate_filtered_sheets(
         
         # 合并直接保留的数据 + 抽样后的真正非空数据
         combined = pd.concat([direct_keep_df, final_non_empty], ignore_index=True)
-        filtered_df = generate_final_format(combined, config)
+        filtered_df = generate_final_format(combined, config, start_number)
         
         if not sampled_df.empty:
             status = f"分层抽取完成，抽取 {len(sampled_df)} 条真正非空数据，空场景总数 {empty_count} 条，总计 {len(filtered_df)} 条"
@@ -1191,7 +1192,11 @@ while True:
         'file_extension': file_extension,
     }
     
-    risk_removed_df, risk_data_df, filtered_df, status = generate_filtered_sheets(combined_df, config)
+    risk_removed_df, risk_data_df, filtered_df, status = generate_filtered_sheets(
+        combined_df, 
+        config,
+        start_number=start_sort_number
+    )
     
     print(f"  生成状态: {status}")
     if risk_removed_df is not None and not risk_removed_df.empty:
